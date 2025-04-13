@@ -1,0 +1,6 @@
+venv/
+pycache/
+*.pyc
+
+uploads/
+queue.json
