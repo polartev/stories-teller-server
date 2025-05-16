@@ -4,3 +4,4 @@ pycache/
 
 uploads/
 queue.json
+server.log
