@@ -2,10 +2,10 @@ from fastapi import FastAPI, WebSocket, UploadFile, File, Body
 from fastapi.responses import JSONResponse, FileResponse
 import shutil
 import json
-from pathlib import Path
-from typing import List, Optional, Dict
 
-from pydantic import BaseModel
+from app.base_paths import *
+from app.server_messages import *
+import app.websocket_connections as ws_conn
 
 class DescriptionRequest(BaseModel):
     filename: str
@@ -13,37 +13,24 @@ class DescriptionRequest(BaseModel):
 
 app = FastAPI()
 
-BASE_DIR = Path(__file__).resolve().parent
-
-UPLOAD_DIR = BASE_DIR / "uploads"
-UPLOAD_DIR.mkdir(exist_ok=True)
-
-QUEUE_FILE = BASE_DIR / "queue.json"
-if not QUEUE_FILE.exists():
-    QUEUE_FILE.write_text("[]")
-
-admin_connection: Optional[WebSocket] = None
-user_connections: Dict[str, WebSocket] = {}
-
 # WebSocket connection for admin
 @app.websocket("/ws/admin")
 async def websocket_admin(websocket: WebSocket):
-    global admin_connection
     await websocket.accept()
-    admin_connection = websocket
+    ws_conn.admin_connection = websocket
     try:
         while True:
             await websocket.receive_text()
     except Exception as e:
         print(f"WebSocket disconnected: {e}")
     finally:
-        admin_connection = None
+        ws_conn.admin_connection = None
 
 # WebSocket connection for users
 @app.websocket("/ws/user/{user_id}")
 async def websocket_user(websocket: WebSocket, user_id: str):
     await websocket.accept()
-    user_connections[user_id] = websocket
+    ws_conn.user_connections[user_id] = websocket
     try:
         while True:
             data = await websocket.receive_text()
@@ -51,11 +38,14 @@ async def websocket_user(websocket: WebSocket, user_id: str):
     except Exception as e:
         print(f"User {user_id} disconnected: {e}")
     finally:
-        user_connections.pop(user_id, None)
+        ws_conn.user_connections.pop(user_id, None)
 
 # Upload file endpoint
-@app.post("/upload")
-async def post_file(file: UploadFile = File(...), user_id: str = "anonymous"):
+@app.post("/upload", response_model=Message)
+async def post_file(
+    file: UploadFile = File(...), 
+    user_id: str = "anonymous"
+):
     filepath = UPLOAD_DIR / file.filename
     with open(filepath, "wb") as f:
         shutil.copyfileobj(file.file, f)
@@ -68,10 +58,23 @@ async def post_file(file: UploadFile = File(...), user_id: str = "anonymous"):
     })
     QUEUE_FILE.write_text(json.dumps(queue, indent=2))
 
-    if admin_connection:
-        await admin_connection.send_text(f"new_task:{file.filename}")
-            
-    return JSONResponse(content={"status": "image received", "filename": file.filename})
+    await ws_conn.message_admin(Message(
+        type="task",
+        payload=BasePayload(
+            action="load_file",
+            data={"filename": file.filename, "user_id": user_id}
+        ),
+        meta={"timestamp": datetime.utcnow().isoformat() + "Z"}
+    ))
+
+    return Message(
+        type="success",
+        payload=BasePayload(
+            action="file_uploaded",
+            data={"filename": file.filename, "user_id": user_id}
+        ),
+        meta={"timestamp": datetime.utcnow().isoformat() + "Z"}
+    )
 
 # Get file by filename
 @app.get("/uploads/{filename}")
@@ -94,8 +97,8 @@ async def post_description(data: DescriptionRequest):
             break
     QUEUE_FILE.write_text(json.dumps(queue, indent=2))
 
-    if user_id in user_connections:
-        await user_connections[user_id].send_text(f"new_description:{data.description}")
+    if user_id in ws_conn.user_connections:
+        await ws_conn.user_connections[user_id].send_text(f"new_description:{data.description}")
 
     return JSONResponse(content={"description": data.description})
 

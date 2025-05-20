@@ -5,3 +5,4 @@ pycache/
 uploads/
 queue.json
 server.log
+server.pid
