@@ -1,4 +1,4 @@
-from fastapi import FastAPI, WebSocket, UploadFile, File, Body
+from fastapi import FastAPI, WebSocket, UploadFile, File, Body, Form
 from fastapi.responses import JSONResponse, FileResponse
 import shutil
 import json
@@ -41,7 +41,8 @@ async def websocket_user(websocket: WebSocket, user_id: str):
 @app.post("/upload", response_model=Message)
 async def post_file(
     file: UploadFile = File(...), 
-    user_id: str = "anonymous"
+    user_id: str = "anonymous",
+    language: str = Form("ua")
 ):
 
     filepath = UPLOAD_DIR / file.filename
@@ -52,6 +53,7 @@ async def post_file(
     queue.append({
         "filename": file.filename,
         "user_id": user_id,
+        "language": language,
         "status": "pending"
     })
     QUEUE_FILE.write_text(json.dumps(queue, indent=2))
@@ -60,7 +62,7 @@ async def post_file(
         type="task",
         payload=BasePayload(
             action="load_file",
-            data={"filename": file.filename, "user_id": user_id}
+            data={"filename": file.filename, "user_id": user_id, "language": language}
         ),
         meta={"timestamp": datetime.utcnow().isoformat() + "Z"}
     ))
