@@ -42,6 +42,7 @@ async def websocket_user(websocket: WebSocket, user_id: str):
 async def post_file(
     file: UploadFile = File(...), 
     user_id: str = "anonymous",
+    story: str = Form(""),
     language: str = Form("ua")
 ):
 
@@ -54,7 +55,8 @@ async def post_file(
         "filename": file.filename,
         "user_id": user_id,
         "language": language,
-        "status": "pending"
+        "status": "pending",
+        "description": story
     })
     QUEUE_FILE.write_text(json.dumps(queue, indent=2))
 
@@ -136,7 +138,7 @@ async def get_description(filename: str, user_id: str = "anonymous"):
 
     queue = json.loads(QUEUE_FILE.read_text())
     for item in queue:
-        if item["filename"] == filename and "description" in item and item["status"] == "completed":
+        if item["filename"] == filename and "description" in item:
             if item["user_id"] == user_id:
                 description = item["description"]
             break
