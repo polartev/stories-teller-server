@@ -143,7 +143,7 @@ async def get_description(filename: str, user_id: str = "anonymous"):
                 description = item["description"]
             break
     
-    if description is None:
+    if description is None or description == "":
         return JSONResponse(content={"error": "Description not found"}, status_code=404)
 
     return JSONResponse(content={"description": description})
