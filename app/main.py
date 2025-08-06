@@ -49,6 +49,9 @@ async def post_file(
     filepath = UPLOAD_DIR / file.filename
     with open(filepath, "wb") as f:
         shutil.copyfileobj(file.file, f)
+    
+    if not QUEUE_FILE.exists():
+        QUEUE_FILE.write_text("[]")
 
     queue = json.loads(QUEUE_FILE.read_text())
     queue.append({
@@ -143,6 +146,14 @@ async def get_description(filename: str, user_id: str = "anonymous"):
                 description = item["description"]
             break
     
+    filepath = UPLOAD_DIR / filename
+
+    if filepath.exists():
+        try:
+            filepath.unlink()
+        except Exception as e:
+            return JSONResponse(content={"error": f"Failed to delete file: {str(e)}"}, status_code=500)
+
     if description is None or description == "":
         return JSONResponse(content={"error": "Description not found"}, status_code=404)
 
